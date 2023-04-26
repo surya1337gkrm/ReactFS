@@ -22,7 +22,11 @@ class Feed extends Component {
   };
 
   componentDidMount() {
-    fetch('URL')
+    fetch('http://localhost:8080/auth/status', {
+      headers: {
+        Authorization: 'Bearer ' + this.props.token,
+      },
+    })
       .then((res) => {
         if (res.status !== 200) {
           throw new Error('Failed to fetch user status.');
@@ -50,7 +54,11 @@ class Feed extends Component {
       page--;
       this.setState({ postPage: page });
     }
-    fetch('http://localhost:8080/feed/posts')
+    fetch('http://localhost:8080/feed/posts?page=' + page, {
+      headers: {
+        Authorization: 'Bearer ' + this.props.token,
+      },
+    })
       .then((res) => {
         if (res.status !== 200) {
           throw new Error('Failed to fetch posts.');
@@ -71,7 +79,16 @@ class Feed extends Component {
 
   statusUpdateHandler = (event) => {
     event.preventDefault();
-    fetch('URL')
+    fetch('http://localhost:8080/auth/status', {
+      method: 'PATCH',
+      headers: {
+        Authorization: 'Bearer ' + this.props.token,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        status: this.state.status,
+      }),
+    })
       .then((res) => {
         if (res.status !== 200 && res.status !== 201) {
           throw new Error("Can't update status!");
@@ -123,6 +140,9 @@ class Feed extends Component {
     fetch(url, {
       method: method,
       body: formData,
+      headers: {
+        Authorization: 'Bearer ' + this.props.token,
+      },
     })
       .then((res) => {
         if (res.status !== 200 && res.status !== 201) {
@@ -174,7 +194,12 @@ class Feed extends Component {
 
   deletePostHandler = (postId) => {
     this.setState({ postsLoading: true });
-    fetch('URL')
+    fetch('http://localhost:8080/feed/post/' + postId, {
+      method: 'DELETE',
+      headers: {
+        Authorization: 'Bearer ' + this.props.token,
+      },
+    })
       .then((res) => {
         if (res.status !== 200 && res.status !== 201) {
           throw new Error('Deleting a post failed!');
@@ -200,6 +225,10 @@ class Feed extends Component {
 
   catchError = (error) => {
     this.setState({ error: error });
+  };
+
+  getUserId = () => {
+    return localStorage.getItem('userId');
   };
 
   render() {
@@ -258,6 +287,7 @@ class Feed extends Component {
                   content={post.content}
                   onStartEdit={this.startEditPostHandler.bind(this, post._id)}
                   onDelete={this.deletePostHandler.bind(this, post._id)}
+                  showButtons={this.getUserId() === post.creator._id}
                 />
               ))}
             </Paginator>

@@ -1,9 +1,7 @@
 const mongoose = require('mongoose');
-const schema = mongoose.Schema;
+const Schema = mongoose.Schema;
 
-//adding timestamps property as second param to new schema
-//will add timestamps to each document in collection.
-const postSchema = new schema(
+const postSchema = new Schema(
   {
     title: {
       type: String,
@@ -18,10 +16,12 @@ const postSchema = new schema(
       required: true,
     },
     creator: {
-      type: Object,
+      type: Schema.Types.ObjectId,
+      ref: 'User',
       required: true,
     },
   },
   { timestamps: true }
 );
+
 module.exports = mongoose.model('Post', postSchema);

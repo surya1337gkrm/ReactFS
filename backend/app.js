@@ -3,8 +3,10 @@ const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
 const path = require('path');
 const multer = require('multer');
+require('dotenv').config();
 
 const feedRoutes = require('./routes/feed');
+const authRoutes = require('./routes/auth');
 
 const app = express();
 
@@ -48,12 +50,14 @@ app.use((req, res, next) => {
 
 //include the routes
 app.use('/feed', feedRoutes);
+app.use('/auth', authRoutes);
 
 //error handling middleware
 app.use((err, req, res, next) => {
   const status = err.statusCode || 500;
   const errMsg = err.message;
-  res.status(status).json({ message: errMsg });
+  const data = err.data;
+  res.status(status).json({ message: errMsg, data });
 });
 mongoose
   .connect(
