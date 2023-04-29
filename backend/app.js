@@ -63,5 +63,16 @@ mongoose
   .connect(
     'mongodb+srv://surya1337:Maddy%401337@cluster0.rzlttud.mongodb.net/messages?retryWrites=true&w=majority'
   )
-  .then((result) => app.listen(8080))
+  .then((result) => {
+    const server = app.listen(8080);
+    //web sockets work on top of http protocol
+    //so, we need to create the server and should pass server as an argument to socket function
+
+    const io = require('./socket').init(server);
+    //we can listen to events on io server
+    // when a connection is established, callback fn will be called with the incoming scoket client.
+    io.on('connection', (socket) => {
+      console.log('Connected');
+    });
+  })
   .catch((err) => console.log(err));

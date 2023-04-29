@@ -3,18 +3,23 @@ const fs = require('fs');
 const path = require('path');
 const Post = require('../models/post');
 const User = require('../models/user');
+const io = require('../socket');
+
 exports.getPosts = (req, res, next) => {
   const currentPage = req.query.page || 1;
   const postsPerPage = 2;
   let totalPosts;
+  //descending order-> sort({<by which propety>:-1})
   Post.find()
     .countDocuments()
     .then((count) => {
       totalPosts = count;
       return Post.find()
+        .populate('creator')
+        .sort({ createdAt: -1 })
         .skip((currentPage - 1) * postsPerPage)
-        .limit(postsPerPage)
-        .populate('creator', 'name');
+        .limit(postsPerPage);
+
       //populate will take 2 params.
       //first parameter will be the new property that will be added to each element found
       //second parameter will be the value of the property that will be fetched from the linked Model [ here name will be
@@ -35,7 +40,7 @@ exports.getPosts = (req, res, next) => {
     });
 };
 
-exports.createPost = (req, res, next) => {
+exports.createPost = async (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     //inside a synchronous fn, when we have an error,
@@ -61,35 +66,34 @@ exports.createPost = (req, res, next) => {
     creator: req.userId,
     //when authenticated, we added userId property to the req object
   });
-  post
-    .save()
-    .then((result) => {
-      //before sending the response, add the post to the user.
-      return User.findById(req.userId);
-    })
-    .then((user) => {
-      creator = user;
-      //adding the post to the user.posts -> mapping each post to an user
-      user.posts.push(post);
-      return user.save();
-    })
-    .then((result) => {
-      return res.status(201).json({
-        message: 'successfully created',
-        post: post,
-        creator: { _id: creator._id, name: creator.name },
-      });
-    })
-    .catch((err) => {
-      //simillarly inside a async code, throwing errors will not reach the
-      //error handling middleware. so we need to call next with the error
-      if (!err.statusCode) {
-        err.statusCode = 500;
-      }
-      next(err);
-    });
-};
+  try {
+    await post.save();
+    const user = await User.findById(req.userId);
+    user.posts.push(post);
+    await user.save();
 
+    //emit will send message to all users
+    //broadcast will send message to all users except to self
+    //while emitting, we need to add an event name and a js object with information which we want to pass
+    io.getIO().emit('posts', {
+      action: 'create',
+      post: { ...post._doc, creator: { _id: req.userId, name: user.name } },
+    });
+
+    return res.status(201).json({
+      message: 'successfully created',
+      post: post,
+      creator: { _id: user._id, name: user.name },
+    });
+  } catch (err) {
+    //simillarly inside a async code, throwing errors will not reach the
+    //error handling middleware. so we need to call next with the error
+    if (!err.statusCode) {
+      err.statusCode = 500;
+    }
+    next(err);
+  }
+};
 exports.getPost = (req, res, next) => {
   const postId = req.params.postId;
   Post.findById(postId)
@@ -113,7 +117,7 @@ exports.getPost = (req, res, next) => {
     });
 };
 
-exports.updatePost = (req, res, next) => {
+exports.updatePost = async (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     const error = new Error('Validation Failed.');
@@ -136,42 +140,44 @@ exports.updatePost = (req, res, next) => {
     throw error;
   }
 
-  Post.findById(postId)
-    .then((post) => {
-      if (!post) {
-        const error = new Error('Post Not Found.');
-        error.statusCode = 404;
-        throw error;
-      }
+  try {
+    const post = await Post.findById(postId).populate('creator');
+    if (!post) {
+      const error = new Error('Post Not Found.');
+      error.statusCode = 404;
+      throw error;
+    }
 
-      if (post.creator.toString() !== req.userId) {
-        const error = new Error('Not Authorized.');
-        error.statusCode = 403;
-        throw error;
-      }
+    if (post.creator._id.toString() !== req.userId) {
+      const error = new Error('Not Authorized.');
+      error.statusCode = 403;
+      throw error;
+    }
 
-      //delete the previous file if it's changed
-      if (imageUrl !== post.imageUrl) {
-        deleteFile(post.imageUrl);
-      }
+    //delete the previous file if it's changed
+    if (imageUrl !== post.imageUrl) {
+      deleteFile(post.imageUrl);
+    }
 
-      post.title = title;
-      post.content = content;
-      post.imageUrl = imageUrl;
-      return post.save();
-    })
-    .then((result) => {
-      return res.status(200).json({
-        message: 'Post Updated',
-        post: result,
-      });
-    })
-    .catch((err) => {
-      if (!err.statusCode) {
-        err.statusCode = 500;
-      }
-      next(err);
+    post.title = title;
+    post.content = content;
+    post.imageUrl = imageUrl;
+    const result = await post.save();
+
+    io.getIO().emit('posts', {
+      action: 'update',
+      post: result,
     });
+    return res.status(200).json({
+      message: 'Post Updated',
+      post: result,
+    });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 500;
+    }
+    next(err);
+  }
 };
 
 exports.deletePost = (req, res, next) => {
@@ -203,6 +209,10 @@ exports.deletePost = (req, res, next) => {
       return user.save();
     })
     .then((result) => {
+      io.getIO().emit('posts', {
+        action: 'delete',
+        post: result,
+      });
       return res.status(200).json({ message: 'Deleted successfully.' });
     })
     .catch((err) => {
