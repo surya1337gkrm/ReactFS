@@ -3,10 +3,23 @@ const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
 const path = require('path');
 const multer = require('multer');
+const helmet = require('helmet');
+const compression = require('compression');
+const morgan = require('morgan');
+const fs = require('fs');
 require('dotenv').config();
 
 const feedRoutes = require('./routes/feed');
 const authRoutes = require('./routes/auth');
+
+//create a writable stream to which logs will be written
+//add 'a' flag to append the logs to the file instead of rewriting.
+const accessLogStream = fs.createWriteStream(
+  path.join(__dirname, 'accesss.log'),
+  {
+    flags: 'a',
+  }
+);
 
 const app = express();
 
@@ -31,6 +44,9 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
+app.use(helmet());
+app.use(compression());
+app.use(morgan('combined', { stream: accessLogStream }));
 //to read data json data we need to add bodyparser.json
 app.use(bodyParser.json());
 //fetches single file that stored on fieldname provided.
